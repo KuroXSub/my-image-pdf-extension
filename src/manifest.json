@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Image Batch Downloader",
+  "version": "1.0.0",
+  "description": "Download images as PDF",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage",
+    "sidePanel" 
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "src/background/index.ts"
+  },
+  "action": {
+    "default_title": "Image Batch Downloader"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/index.ts"],
+      "run_at": "document_idle"
+    }
+  ]
+}
