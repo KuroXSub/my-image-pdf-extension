@@ -17,6 +17,10 @@ Image Grasper adalah ekstensi Chrome untuk mengunduh gambar dari halaman web sec
 * Filter gambar berdasarkan rasio (Wide, Tall, Square) dan format (JPG, PNG, dll)
 * Konversi gambar terpilih menjadi PDF berkualitas tinggi (*edge-to-edge*)
 
+## Unduh Ekstensi (Versi Siap Pakai)
+Jika Anda tidak ingin melakukan build dari source code, Anda dapat mengunduh versi siap pakai di sini:
+👉 **[Download Image Grasper v1.0 (ZIP)](https://drive.google.com/file/d/1ZpeGM0jAE94O3-tcmFBtiVuRBJydVtPt/view?usp=sharing)**
+
 ## Tech Stack
 
 - React: 18.2.0
@@ -54,7 +58,15 @@ Image Grasper adalah ekstensi Chrome untuk mengunduh gambar dari halaman web sec
 
 6.  **Klik Load unpacked** dan pilih folder dist/ dari proyek ini
 
-## 📁 Struktur Singkat Project
+## Keterbatasan & Catatan Penggunaan
+
+- **Masalah CORS:** Pada beberapa website dengan keamanan ketat, gambar mungkin tidak langsung muncul di panel. Silakan Segarkan (Reload) halaman web tersebut terlebih dahulu, lalu buka kembali ekstensinya.
+
+- **Lazy Load:** Ekstensi hanya dapat mendeteksi gambar yang sudah dimuat oleh browser. Disarankan untuk melakukan Scroll halaman hingga ke bagian bawah sebelum melakukan pemindaian (Scan).
+
+- **Hotlink Protection:** Ekstensi ini telah dilengkapi fitur bypass, namun pastikan tab tetap terbuka selama proses unduhan berlangsung.
+
+## Struktur Singkat Project
 
 ```
 src/
