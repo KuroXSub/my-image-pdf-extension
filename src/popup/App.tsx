@@ -2,16 +2,23 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { ImageCard } from './components/ImageCard';
 import { generatePDF } from '../lib/pdf-generator'; 
-import { Download, RefreshCw, Filter, Image as ImageIcon, Trash2, Loader2, ChevronDown } from 'lucide-react';
+import { generateZIP } from '../lib/zip-generator';
+import { sanitizeFileName } from '../lib/utils';
+import { 
+  Download, RefreshCw, Filter, Image as ImageIcon, 
+  Trash2, Loader2, ChevronDown, FileArchive, Edit3 
+} from 'lucide-react';
 import './index.css'; 
 
 function App() {
   const { images, addUniqueImages, selectedIds, toggleSelection, toggleSelectAll, clearImages } = useImageStore();
   const currentTabId = useRef<number | null>(null);
   
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingType, setGeneratingType] = useState<'pdf' | 'zip' | null>(null);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [fileNameInput, setFileNameInput] = useState(`Image_Grasper_${new Date().toISOString().slice(0,10)}`);
 
   // --- STATE UNTUK FILTER BARU ---
   const [showFilterPanel, setShowFilterPanel] = useState(false);
@@ -23,29 +30,35 @@ function App() {
   const [selectedLayouts, setSelectedLayouts] = useState<string[]>(['wide', 'tall', 'square']);
   const [selectedFormats, setSelectedFormats] = useState<string[]>([]);
   const [rememberFilters, setRememberFilters] = useState(false);
+  const [isFilterLoaded, setIsFilterLoaded] = useState(false);
 
   // 1. Inisialisasi Data & Filter
   useEffect(() => {
     const init = async () => {
+      setIsInitialLoading(true);
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id) {
         currentTabId.current = tab.id;
-        clearImages(); 
+        clearImages();
 
-        // Load Gambar dari Tab Ini
         const storageKey = `scannedImages_${tab.id}`;
+        // Ambil data gambar dan filter sekaligus
         chrome.storage.local.get([storageKey, 'savedFilters'], (result) => {
-          // Load Saved Filters jika ada
           if (result.savedFilters) {
+            // PERBAIKAN: Gunakan nilai dari savedFilters secara konsisten
             setSelectedLayouts(result.savedFilters.layouts || ['wide', 'tall', 'square']);
-            setSelectedFormats(result.savedFilters.formats || []);
+            setSelectedFormats(result.savedFilters.formats || []); // Perbaikan typo dari savedFormats ke savedFilters
             setRememberFilters(true);
           }
+          
+          // Tandai bahwa inisialisasi filter SELESAI
+          setIsFilterLoaded(true);
 
           if (result[storageKey] && result[storageKey].length > 0) {
             addUniqueImages(result[storageKey]);
+            setIsInitialLoading(false);
           } else {
-            requestScan();
+            requestScan().finally(() => setIsInitialLoading(false));
           }
         });
       }
@@ -79,12 +92,19 @@ function App() {
 
   // 3. Simpan pengaturan otomatis jika "Remember" aktif
   useEffect(() => {
+    if (!isFilterLoaded) return;
+
     if (rememberFilters) {
-      chrome.storage.local.set({ savedFilters: { layouts: selectedLayouts, formats: selectedFormats } });
+      chrome.storage.local.set({ 
+        savedFilters: { 
+          layouts: selectedLayouts, 
+          formats: selectedFormats 
+        } 
+      });
     } else {
       chrome.storage.local.remove('savedFilters');
     }
-  }, [selectedLayouts, selectedFormats, rememberFilters]);
+  }, [selectedLayouts, selectedFormats, rememberFilters, isFilterLoaded]);
 
   // --- LOGIC PENYARINGAN (FILTER) KETAT ---
   const filteredImages = useMemo(() => {
@@ -109,24 +129,41 @@ function App() {
     }
   };
 
-  const handleDownload = async () => {
+  const handleDownload = async (type: 'pdf' | 'zip') => {
     const imagesToDownload = images.filter(img => selectedIds.has(img.id));
     if (imagesToDownload.length === 0 || !currentTabId.current) return;
 
-    setIsGenerating(true);
+    // Bersihkan nama file dari karakter terlarang
+    const finalName = sanitizeFileName(fileNameInput, `Download_${type.toUpperCase()}`);
+
+    setGeneratingType(type);
     setProgress({ current: 0, total: imagesToDownload.length });
 
     try {
-      await generatePDF(imagesToDownload, currentTabId.current, (curr, total) => {
-        setProgress({ current: curr, total });
-      });
+      if (type === 'pdf') {
+        await generatePDF(imagesToDownload, currentTabId.current, finalName, (curr, total) => {
+          setProgress({ current: curr, total });
+        });
+      } else {
+        await generateZIP(imagesToDownload, currentTabId.current, finalName, (curr, total) => {
+          setProgress({ current: curr, total });
+        });
+      }
     } catch (error) {
-      console.error("Gagal membuat PDF", error);
-      alert("Terjadi kesalahan saat membuat PDF.");
+      alert(`Gagal membuat ${type.toUpperCase()}`);
     } finally {
-      setIsGenerating(false);
+      setGeneratingType(null);
     }
   };
+
+  if (isInitialLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-white">
+        <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-4" />
+        <p className="text-gray-500 font-medium animate-pulse">Memindai gambar...</p>
+      </div>
+    );
+  }
 
   // Helper untuk Checkbox
   const toggleLayout = (val: string) => {
@@ -267,32 +304,56 @@ function App() {
       </main>
 
       {/* FOOTER */}
-      <footer className="bg-white border-t p-4 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.1)] z-20">
+      <footer className="bg-white border-t p-4 shadow-lg z-20">
+        <div className="mb-4">
+          <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block flex items-center gap-1">
+            <Edit3 size={12} /> Nama File Kustom:
+          </label>
+          <input 
+            type="text"
+            value={fileNameInput}
+            onChange={(e) => setFileNameInput(e.target.value)}
+            placeholder="Masukkan nama file..."
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50"
+          />
+        </div>
+
         <div className="flex items-center justify-between mb-4">
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
-            <input type="checkbox" checked={isAllSelected} onChange={(e) => toggleSelectAll(e.target.checked, filteredImages)} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300" />
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+            <input type="checkbox" checked={isAllSelected} onChange={(e) => toggleSelectAll(e.target.checked, filteredImages)} className="w-4 h-4 rounded text-blue-600 border-gray-300" />
             Pilih Tampil ({filteredImages.length})
           </label>
           <span className="text-xs text-gray-500">{selectedIds.size} terpilih</span>
         </div>
 
-        <button 
-          className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-200"
-          disabled={selectedIds.size === 0 || isGenerating}
-          onClick={handleDownload}
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 size={18} className="animate-spin" />
-              <span>Memproses ({progress.current}/{progress.total})</span>
-            </>
-          ) : (
-            <>
-              <Download size={18} />
-              <span>Download PDF</span>
-            </>
-          )}
-        </button>
+        <div className="flex gap-2">
+          <button 
+            className="flex-1 bg-gray-800 hover:bg-black text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            disabled={selectedIds.size === 0 || generatingType !== null}
+            onClick={() => handleDownload('zip')}
+          >
+            {generatingType === 'zip' ? <Loader2 className="animate-spin" size={18} /> : <FileArchive size={18} />}
+            <span>ZIP</span>
+          </button>
+
+          <button 
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            disabled={selectedIds.size === 0 || generatingType !== null}
+            onClick={() => handleDownload('pdf')}
+          >
+            {generatingType === 'pdf' ? (
+              <>
+                <Loader2 className="animate-spin" size={18} /> 
+                <span>Memproses ({progress.current}/{progress.total})</span>
+              </>
+            ) : (
+              <>
+                <Download size={18} />
+                <span>PDF</span>
+              </>
+            )}
+          </button>
+        </div>
       </footer>
     </div>
   );
