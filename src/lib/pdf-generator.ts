@@ -25,6 +25,7 @@ const urlToBase64 = (url: string, tabId: number): Promise<string> => {
 export const generatePDF = async (
   images: ScannedImage[], 
   tabId: number, 
+  fileName: string,
   onProgress: (current: number, total: number) => void
 ) => {
   if (images.length === 0) return;
@@ -64,6 +65,6 @@ export const generatePDF = async (
   }
 
   if (doc) {
-    doc.save(`Image_Batch_${new Date().toISOString().slice(0,10)}.pdf`);
+    doc.save(`${fileName}.pdf`);
   }
 };
