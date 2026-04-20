@@ -28,7 +28,8 @@
     "scripting",
     "downloads",
     "storage",
-    "sidePanel" 
+    "sidePanel",
+    "cookies"
   ],
   "host_permissions": [
     "<all_urls>"
