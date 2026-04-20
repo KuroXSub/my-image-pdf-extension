@@ -86,44 +86,43 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   
   else if (message.type === 'FETCH_IMAGE_BASE64') {
     const { url } = message.payload;
+
+    // 1. Cari di DOM (gambar sudah termuat)
+    const imgs = Array.from(document.images);
+    const found = imgs.find(img => img.src === url);
     
-    fetch(url)
-      .then(response => response.blob())
-      .then(blob => {
-        const img = new Image();
-        const objectUrl = URL.createObjectURL(blob);
-        
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
+    if (found && found.complete) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = found.naturalWidth;
+        canvas.height = found.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(found, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        sendResponse({ success: true, data: dataUrl });
+        return true;
+      } catch (e) {
+        // CORS error, lanjut ke background fetch
+        console.log('Canvas CORS, fallback to background fetch');
+      }
+    }
 
-          if (ctx) {
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
-          }
-
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
-          
-          URL.revokeObjectURL(objectUrl);
-          sendResponse({ success: true, data: dataUrl });
-        };
-        
-        img.onerror = () => {
-          URL.revokeObjectURL(objectUrl);
-          sendResponse({ success: false, error: 'Gagal memuat gambar ke Canvas' });
-        };
-        
-        img.src = objectUrl;
-      })
-      .catch(error => {
-        console.error('Gagal fetch gambar via Content Script:', error);
-        sendResponse({ success: false, error: error.toString() });
-      });
-
-    return true;
+    // 2. Kirim ke background dengan referer halaman saat ini
+    const referer = window.location.href;
+    chrome.runtime.sendMessage({
+      type: 'FETCH_IMAGE_BACKGROUND',
+      payload: { url, referer }
+    }, (response) => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ success: false, error: chrome.runtime.lastError.message });
+      } else if (response?.success) {
+        sendResponse({ success: true, data: response.data });
+      } else {
+        sendResponse({ success: false, error: response?.error || 'Background fetch failed' });
+      }
+    });
+    
+    return true; // async
   }
 });
 
